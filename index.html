@@ -1,7 +1,33 @@
-<div>Teachable Machine Pose Model</div>
-<button type="button" onclick="init()">Start</button>
-<div><canvas id="canvas"></canvas></div>
-<div id="label-container"></div>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FratFlick Pose Model</title>
+    <style>
+        :root { color-scheme: light; font-family: system-ui, sans-serif; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f1f5f9; color: #172033; }
+        main { width: min(100%, 620px); padding: clamp(20px, 5vw, 40px); text-align: center; background: #fff; border-radius: 18px; box-shadow: 0 12px 35px #1720331c; }
+        h1 { margin: 0 0 8px; font-size: clamp(1.5rem, 4vw, 2rem); }
+        .hint { margin: 0 0 24px; color: #64748b; }
+        button { border: 0; border-radius: 999px; padding: 12px 28px; background: #2563eb; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .preview { width: min(100%, 480px); aspect-ratio: 1; margin: 24px auto; overflow: hidden; border: 4px solid #dbeafe; border-radius: 14px; background: #0f172a; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #label-container { display: grid; gap: 8px; text-align: left; }
+        #label-container div { padding: 10px 14px; border-radius: 8px; background: #eff6ff; color: #1e3a8a; font-weight: 600; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>FratFlick Pose Model</h1>
+    <p class="hint">Start the camera to see live pose predictions.</p>
+    <button type="button" onclick="init()">Start camera</button>
+    <button type="button" onclick="webcam.stop()">Stop camera</button>
+    <div class="preview"><canvas id="canvas" width="400" height="400"></canvas></div>
+    <div id="label-container" aria-live="polite"></div>
+</main>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
 <script type="text/javascript">
@@ -9,8 +35,19 @@
     // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/pose
 
     // the link to your model provided by Teachable Machine export panel
-    const URL = "./my_model/";
+    const URL = "./Model/";
+    const testTrack = new Audio('audio-file.mp3');
+    const testTrack2 = new Audio('audio-file2.mp3');
+    // keys for checking the predictions 
+    const fratKey = "Frat Flicking"
+    const noFratKey = "Not frat flicking"
+    const danceKey = "Dancing"
     let model, webcam, ctx, labelContainer, maxPredictions;
+
+    //test audio
+    function isAudioPlaying(audio) {
+        return !audio.paused && !audio.ended && audio.currentTime > 0;
+    }
 
     async function init() {
         const modelURL = URL + "model.json";
@@ -23,7 +60,7 @@
         maxPredictions = model.getTotalClasses();
 
         // Convenience function to setup a webcam
-        const size = 200;
+        const size = 400;
         const flip = true; // whether to flip the webcam
         webcam = new tmPose.Webcam(size, size, flip); // width, height, flip
         await webcam.setup(); // request access to the webcam
@@ -59,6 +96,12 @@
             labelContainer.childNodes[i].innerHTML = classPrediction;
         }
 
+        const track = new Audio('audio-file.mp3');
+        //finsih adding the event listeners for the music and frat flicking
+        addEventListener('click', () => {
+           if(isAudioPlaying(audio)) track.play();
+        });
+
         // finally draw the poses
         drawPose(pose);
     }
@@ -75,3 +118,5 @@
         }
     }
 </script>
+</body>
+</html>
