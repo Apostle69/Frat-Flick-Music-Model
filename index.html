@@ -22,6 +22,8 @@
 <body>
 <main>
     <h1>FratFlick Pose Model</h1>
+    <label for="file-upload">Upload music to flick to:</label>
+    <input id="file-upload" type="file" accept="audio/*can I">
     <p class="hint">Start the camera to see live pose predictions.</p>
     <button type="button" onclick="init()">Start camera</button>
     <button type="button" onclick="webcam.stop()">Stop camera</button>
@@ -36,13 +38,11 @@
 
     // the link to your model provided by Teachable Machine export panel
     const URL = "./Model/";
-    const testTrack = new Audio('audio-file.mp3');
-    const testTrack2 = new Audio('audio-file2.mp3');
+    const flickAud = new Audio('SoftlyMannequinPussy.mp3'); //ADD FUNCTIONALITY TO ALLOW USER TO SELECT AUDIO FILE TO FLICK TO BASED ON THEIR UPLOADED FILES
     // keys for checking the predictions 
     const fratKey = "Frat Flicking"
-    const noFratKey = "Not frat flicking"
-    const danceKey = "Dancing"
-    let model, webcam, ctx, labelContainer, maxPredictions;
+    const flickThreshold = 0.7;
+    let model, webcam, ctx, labelContainer, maxPredictions, flickScore = 0;
 
     //test audio
     function isAudioPlaying(audio) {
@@ -91,6 +91,7 @@
         const prediction = await model.predict(posenetOutput);
 
         for (let i = 0; i < maxPredictions; i++) {
+            flickScore = prediction[i].className === fratKey ? prediction[i].probability.toFixed(2) : flickScore;            
             const classPrediction =
                 prediction[i].className + ": " + prediction[i].probability.toFixed(2);
             labelContainer.childNodes[i].innerHTML = classPrediction;
@@ -98,9 +99,12 @@
 
         const track = new Audio('audio-file.mp3');
         //finsih adding the event listeners for the music and frat flicking
-        addEventListener('click', () => {
-           if(isAudioPlaying(audio)) track.play();
-        });
+        if(!sAudioPlaying(flickAud) && flickScore > flickThreshold ){
+            flickAud.play();
+
+        } else if (flickScore < flickThreshold) {
+            flickAud.pause();
+        }
 
         // finally draw the poses
         drawPose(pose);
