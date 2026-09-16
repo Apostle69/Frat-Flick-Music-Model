@@ -8,25 +8,38 @@
         :root { color-scheme: light; font-family: system-ui, sans-serif; }
         * { box-sizing: border-box; }
         body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f1f5f9; color: #172033; }
-        main { width: min(100%, 620px); padding: clamp(20px, 5vw, 40px); text-align: center; background: #fff; border-radius: 18px; box-shadow: 0 12px 35px #1720331c; }
+        main { position: relative; z-index: 2; width: min(100%, 620px); padding: clamp(20px, 5vw, 40px); text-align: center; background: #fff; border-radius: 18px; box-shadow: 0 12px 35px #1720331c; }
         h1 { margin: 0 0 8px; font-size: clamp(1.5rem, 4vw, 2rem); }
         .hint { margin: 0 0 24px; color: #64748b; }
         button { border: 0; border-radius: 999px; padding: 12px 28px; background: #2563eb; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
         button:hover { background: #1d4ed8; }
         .preview { width: min(100%, 480px); aspect-ratio: 1; margin: 24px auto; overflow: hidden; border: 4px solid #dbeafe; border-radius: 14px; background: #0f172a; }
         canvas { display: block; width: 100%; height: 100%; }
+        .dancer-stage { position: fixed; z-index: 1; inset: 0; overflow: hidden; pointer-events: none; }
+        .dancer { position: absolute; top: 0; left: 0; width: var(--size); aspect-ratio: 1; opacity: 0; transform: translate(-240px, -240px); transition: opacity 180ms ease; }
+        .dancer.is-active { opacity: 1; animation: dancer-drift var(--duration) linear infinite alternate; }
+        .dancer-stage.dance-level--high .dancer.is-active { animation-duration: var(--high-duration); }
+        .dancer-motion { width: 100%; height: 100%; overflow: hidden; border-radius: 18px; box-shadow: 0 8px 20px #17203333; animation: dancer-bounce var(--bounce-duration) ease-in-out infinite alternate; }
+        .dancer iframe { display: block; width: 100%; height: 100%; border: 0; }
+        .dancer-credit { position: fixed; z-index: 3; right: 10px; bottom: 8px; margin: 0; color: #475569; font-size: .72rem; }
+        .dancer-credit a { color: inherit; }
+        @keyframes dancer-drift { from { transform: translate(var(--start-x), var(--start-y)); } to { transform: translate(var(--end-x), var(--end-y)); } }
+        @keyframes dancer-bounce { from { transform: translateY(0) rotate(-3deg) scale(1); } to { transform: translateY(-18px) rotate(3deg) scale(1.06); } }
+        @media (prefers-reduced-motion: reduce) { .dancer.is-active, .dancer-motion { animation: none; } }
         #label-container { display: grid; gap: 8px; text-align: left; }
         #label-container div { padding: 10px 14px; border-radius: 8px; background: #eff6ff; color: #1e3a8a; font-weight: 600; }
     </style>
 </head>
 <body>
+<section id="dancer-stage" class="dancer-stage" aria-label="Frat Flicking celebration dancers" aria-hidden="true"></section>
+<p class="dancer-credit"><a href="https://giphy.com/explore/dancing-stick-figure" target="_blank" rel="noopener noreferrer">Dancing stick figures via GIPHY</a></p>
 <main>
     <h1>FratFlick Pose Model</h1>
     <label for="file-upload">Upload music to flick to:</label>
-    <input id="file-upload" type="file" accept="audio/*can I">
+    <input id="file-upload" type="file" accept="audio/*">
     <p class="hint">Start the camera to see live pose predictions.</p>
     <button type="button" onclick="init()">Start camera</button>
-    <button type="button" onclick="webcam.stop()">Stop camera</button>
+    <button type="button" onclick="stopCamera()">Stop camera</button>
     <div class="preview"><canvas id="canvas" width="400" height="400"></canvas></div>
     <div id="label-container" aria-live="polite"></div>
 </main>
@@ -38,11 +51,25 @@
 
     // the link to your model provided by Teachable Machine export panel
     const URL = "./Model/";
-    const flickAud = new Audio('SoftlyMannequinPussy.mp3'); //ADD FUNCTIONALITY TO ALLOW USER TO SELECT AUDIO FILE TO FLICK TO BASED ON THEIR UPLOADED FILES
+    const flickAud = new Audio('./Audios/SoftlyMannequinPussy.mp3');
     // keys for checking the predictions 
     const fratKey = "Frat Flicking"
     const flickThreshold = 0.7;
+    const dancerGifs = [
+        "xT0xeJR9kenVHKnysE",
+        "bBrfLWeU4piGEOdYel",
+        "92BEoGGUC2UpauCVIv",
+        "3mIMOXYRBc46L7LSfL",
+        "kAi2Lfn526nQ8mdX9l",
+        "1ziTIl6ngl8LjpB4b6",
+        "JsTCmjvrJziwJhKAdC",
+        "futRp5Gz1vXkkIXaO6",
+        "3DxKUlDLfhvaVFDbvj"
+    ];
     let model, webcam, ctx, labelContainer, maxPredictions, flickScore = 0;
+    let animationFrameId = null;
+    let cameraRunning = false;
+    let dancerStage, dancers;
 
     //test audio
     function isAudioPlaying(audio) {
@@ -50,6 +77,8 @@
     }
 
     async function init() {
+        if (cameraRunning) return;
+
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
@@ -65,22 +94,41 @@
         webcam = new tmPose.Webcam(size, size, flip); // width, height, flip
         await webcam.setup(); // request access to the webcam
         await webcam.play();
-        window.requestAnimationFrame(loop);
+        cameraRunning = true;
 
         // append/get elements to the DOM
         const canvas = document.getElementById("canvas");
         canvas.width = size; canvas.height = size;
         ctx = canvas.getContext("2d");
         labelContainer = document.getElementById("label-container");
-        for (let i = 0; i < maxPredictions; i++) { // and class labels
-            labelContainer.appendChild(document.createElement("div"));
+        dancerStage = document.getElementById("dancer-stage");
+        loadRandomDancers();
+        if (!labelContainer.childElementCount) {
+            for (let i = 0; i < maxPredictions; i++) { // and class labels
+                labelContainer.appendChild(document.createElement("div"));
+            }
         }
+
+        animationFrameId = window.requestAnimationFrame(loop);
     }
 
-    async function loop(timestamp) {
+    function stopCamera() {
+        cameraRunning = false;
+        if (animationFrameId !== null) {
+            window.cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        if (webcam) webcam.stop();
+        flickAud.pause();
+        flickScore = 0;
+        updateDancers(flickScore);
+    }
+
+    async function loop() {
+        if (!cameraRunning) return;
         webcam.update(); // update the webcam frame
         await predict();
-        window.requestAnimationFrame(loop);
+        if (cameraRunning) animationFrameId = window.requestAnimationFrame(loop);
     }
 
     async function predict() {
@@ -91,23 +139,72 @@
         const prediction = await model.predict(posenetOutput);
 
         for (let i = 0; i < maxPredictions; i++) {
-            flickScore = prediction[i].className === fratKey ? prediction[i].probability.toFixed(2) : flickScore;            
+            if (prediction[i].className === fratKey) {
+                flickScore = prediction[i].probability;
+            }
             const classPrediction =
                 prediction[i].className + ": " + prediction[i].probability.toFixed(2);
             labelContainer.childNodes[i].innerHTML = classPrediction;
         }
 
-        const track = new Audio('audio-file.mp3');
-        //finsih adding the event listeners for the music and frat flicking
-        if(!sAudioPlaying(flickAud) && flickScore > flickThreshold ){
-            flickAud.play();
-
-        } else if (flickScore < flickThreshold) {
+        if (!isAudioPlaying(flickAud) && flickScore >= flickThreshold) {
+            flickAud.play().catch((error) => {
+                console.warn('Unable to play the Frat Flicking track:', error);
+            });
+        } else if (flickScore < flickThreshold && isAudioPlaying(flickAud)) {
             flickAud.pause();
         }
+        updateDancers(flickScore);
 
         // finally draw the poses
         drawPose(pose);
+    }
+
+    function updateDancers(score) {
+        if (!dancers) return;
+
+        const dancerCount = score >= 0.85 ? 6 : score >= flickThreshold ? 3 : score >= 0.5 ? 1 : 0;
+        dancers.forEach((dancer, index) => {
+            dancer.classList.toggle("is-active", index < dancerCount);
+        });
+        dancerStage.classList.toggle("dance-level--high", score >= 0.85);
+    }
+
+    function loadRandomDancers() {
+        const shuffledGifs = [...dancerGifs];
+        for (let index = shuffledGifs.length - 1; index > 0; index--) {
+            const randomIndex = Math.floor(Math.random() * (index + 1));
+            [shuffledGifs[index], shuffledGifs[randomIndex]] = [shuffledGifs[randomIndex], shuffledGifs[index]];
+        }
+        const selectedGifs = shuffledGifs.slice(0, 6);
+        dancerStage.replaceChildren();
+
+        dancers = selectedGifs.map((gifId) => {
+            const dancer = document.createElement("div");
+            const motion = document.createElement("div");
+            const iframe = document.createElement("iframe");
+            const size = Math.floor(92 + Math.random() * 80);
+            const maxX = Math.max(0, window.innerWidth - size);
+            const maxY = Math.max(0, window.innerHeight - size);
+
+            dancer.className = "dancer";
+            dancer.style.setProperty("--size", `${size}px`);
+            dancer.style.setProperty("--start-x", `${Math.floor(Math.random() * maxX)}px`);
+            dancer.style.setProperty("--start-y", `${Math.floor(Math.random() * maxY)}px`);
+            dancer.style.setProperty("--end-x", `${Math.floor(Math.random() * maxX)}px`);
+            dancer.style.setProperty("--end-y", `${Math.floor(Math.random() * maxY)}px`);
+            dancer.style.setProperty("--duration", `${(7 + Math.random() * 6).toFixed(2)}s`);
+            dancer.style.setProperty("--high-duration", `${(3 + Math.random() * 2.5).toFixed(2)}s`);
+            dancer.style.setProperty("--bounce-duration", `${(0.35 + Math.random() * 0.45).toFixed(2)}s`);
+            iframe.src = `https://giphy.com/embed/${gifId}`;
+            iframe.title = "Dancing stick figure from GIPHY";
+            iframe.loading = "lazy";
+            motion.className = "dancer-motion";
+            motion.appendChild(iframe);
+            dancer.appendChild(motion);
+            dancerStage.appendChild(dancer);
+            return dancer;
+        });
     }
 
     function drawPose(pose) {
